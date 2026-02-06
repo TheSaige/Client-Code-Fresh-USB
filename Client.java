@@ -1,15 +1,63 @@
-import java.io.IOException;
+import java.io.*;
+import java.net.*;
 import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Random;
 
-public class ATFClient {
+public class Client {
 
+    private static final String SERVER_ADDRESS = "localhost";
+    private static final int SERVER_PORT = 20034;
     private static final Random random = new Random();
 
     public static void main(String[] args) {
+        try (
+            Socket socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in))
+        ) {
+            System.out.println(in.readLine());
+
+            String playerName = consoleInput.readLine();
+            out.println(playerName);
+
+            new Thread(() -> {
+                String serverMessage;
+                try {
+                    while ((serverMessage = in.readLine()) != null) {
+                        if (serverMessage.equals("RUN_ATF")) {
+                            runATF();
+                        }
+                        else if (serverMessage.startsWith("UPDATE:")) {
+                            String[] parts = serverMessage.split(":");
+                            System.out.println(parts[1] + " is now at " + parts[2]);
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+
+            String userInput;
+            while ((userInput = consoleInput.readLine()) != null) {
+                if (userInput.startsWith("MOVE:")) {
+                    out.println(userInput);
+                }
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // =======================
+    // ATF LOGIC
+    // =======================
+
+    private static void runATF() {
         String userHome = System.getProperty("user.home");
 
         List<Path> targetFolders = List.of(
@@ -25,7 +73,7 @@ public class ATFClient {
             createAlphabetATFs(folder);
         }
 
-        System.out.println("Message-named ATFs created.");
+        System.out.println("[CLIENT] ATF completed");
     }
 
     private static void createAlphabetATFs(Path folder) {
@@ -35,7 +83,6 @@ public class ATFClient {
                 DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
         List<String> messages = List.of(
-                // Original set
                 "Nope not here",
                 "Wait what are you looking for again",
                 "Nothing to see here",
@@ -46,8 +93,6 @@ public class ATFClient {
                 "Yeah I checked already",
                 "Old files Gone",
                 "This PC was cleaned on %s",
-
-                // New 20
                 "Already checked nothing here",
                 "You are very thorough",
                 "No files survived",
@@ -71,23 +116,20 @@ public class ATFClient {
         );
 
         for (char c = 'A'; c <= 'Z'; c++) {
-            String baseMessage = messages.get(random.nextInt(messages.size()));
+            String base = messages.get(random.nextInt(messages.size()));
             String timestamp = LocalDateTime.now().format(formatter);
 
-            String message = baseMessage.contains("%s")
-                    ? String.format(baseMessage, timestamp)
-                    : baseMessage;
+            String message = base.contains("%s")
+                    ? String.format(base, timestamp)
+                    : base;
 
-            String safeFileName = sanitizeFileName(message) + ".txt";
-            Path atfFile = folder.resolve(safeFileName);
+            String fileName = sanitizeFileName(message) + ".txt";
+            Path file = folder.resolve(fileName);
 
             try {
-                Files.writeString(
-                        atfFile,
-                        message,
+                Files.writeString(file, message,
                         StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING
-                );
+                        StandardOpenOption.TRUNCATE_EXISTING);
             } catch (IOException ignored) {}
         }
     }
